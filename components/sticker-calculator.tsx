@@ -2,6 +2,9 @@
 
 import type React from "react"
 import { useState, useEffect } from "react"
+import { createClient } from "@supabase/supabase-js"
+
+const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
 export default function StickerCalculator() {
   const [selectedSize, setSelectedSize] = useState("")
@@ -19,41 +22,126 @@ export default function StickerCalculator() {
   const [widthError, setWidthError] = useState(false)
   const [quantityError, setQuantityError] = useState(false)
   const [showArtworkSection, setShowArtworkSection] = useState(false)
+  const [shippingMessage, setShippingMessage] = useState("")
+  const [uploadedImages, setUploadedImages] = useState<string[]>([])
+  const [isUploading, setIsUploading] = useState(false)
+
+  useEffect(() => {
+    const savedImages = localStorage.getItem("sticker-artwork-images")
+    if (savedImages) {
+      setUploadedImages(JSON.parse(savedImages))
+    }
+  }, [])
+
+  useEffect(() => {
+    if (uploadedImages.length > 0) {
+      localStorage.setItem("sticker-artwork-images", JSON.stringify(uploadedImages))
+    } else {
+      localStorage.removeItem("sticker-artwork-images")
+    }
+  }, [uploadedImages])
+
+  const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files
+    if (!files || files.length === 0) return
+
+    setIsUploading(true)
+    const newImageUrls: string[] = []
+
+    try {
+      for (const file of Array.from(files)) {
+        const fileExt = file.name.split(".").pop()
+        const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`
+
+        const { data, error } = await supabase.storage.from("artwork-files").upload(fileName, file)
+
+        if (error) {
+          console.error("Upload error:", error)
+          alert(`Failed to upload ${file.name}. Please try again.`)
+          continue
+        }
+
+        const {
+          data: { publicUrl },
+        } = supabase.storage.from("artwork-files").getPublicUrl(fileName)
+
+        newImageUrls.push(publicUrl)
+      }
+
+      if (newImageUrls.length > 0) {
+        setUploadedImages((prev) => [...prev, ...newImageUrls])
+      }
+    } catch (error) {
+      console.error("Error uploading images:", error)
+      alert("Upload failed. Please check your connection and try again.")
+    } finally {
+      setIsUploading(false)
+      event.target.value = ""
+    }
+  }
+
+  const removeImage = (imageUrl: string) => {
+    setUploadedImages((prev) => prev.filter((url) => url !== imageUrl))
+  }
+
+  function calculateStickerPrice(lengthMm: number, heightMm: number, qty: number, minCharge = 20, ratePerM2 = 120) {
+    const lengthM = lengthMm / 1000
+    const heightM = heightMm / 1000
+    const areaPerSticker = lengthM * heightM
+    const totalArea = areaPerSticker * qty
+    const rawPrice = totalArea * ratePerM2
+    const finalPrice = Math.max(rawPrice, minCharge)
+    return Number.parseFloat(finalPrice.toFixed(2))
+  }
 
   const calculatePrice = () => {
-    let size = 0
+    let lengthMm = 0
+    let heightMm = 0
     let quantity = 0
 
-    // Get size
     if (selectedSize === "custom") {
       if (customLength && customWidth) {
-        size = Number.parseInt(customLength) * Number.parseInt(customWidth)
+        lengthMm = Number.parseInt(customLength)
+        heightMm = Number.parseInt(customWidth)
       }
     } else if (selectedSize) {
-      size = Number.parseInt(selectedSize) * Number.parseInt(selectedSize)
+      lengthMm = Number.parseInt(selectedSize)
+      heightMm = Number.parseInt(selectedSize)
     }
 
-    // Get quantity
     if (selectedQuantity === "custom") {
       quantity = Number.parseInt(customQuantity) || 0
     } else if (selectedQuantity) {
       quantity = Number.parseInt(selectedQuantity)
     }
 
-    if (size > 0 && quantity > 0 && selectedFinish) {
-      // Basic pricing calculation (simplified)
-      const basePrice = (size / 1000) * 0.5 // Base price per mm²
-      const total = basePrice * quantity * 1.1 // Add 10% GST
-      const shipping = Number.parseFloat(shippingMethod)
-      const finalTotal = total + shipping
+    if (lengthMm > 0 && heightMm > 0 && quantity > 0 && selectedFinish) {
+      const subtotal = calculateStickerPrice(lengthMm, heightMm, quantity)
 
-      setTotalPrice(finalTotal)
-      setPricePerSticker(finalTotal / quantity)
+      if (subtotal < 60) {
+        setShippingMessage("Choose between Express or Standard Shipping.")
+        if (!shippingMethod) {
+          setShippingMethod("13.95")
+        }
+      } else if (subtotal >= 60 && subtotal < 100) {
+        setShippingMessage("You have received free Standard Shipping.")
+        setShippingMethod("0.00-standard")
+      } else if (subtotal >= 100) {
+        setShippingMessage("You have received free Express Shipping.")
+        setShippingMethod("0.00-express")
+      }
+
+      const shippingCost = shippingMethod === "13.95" ? 13.95 : shippingMethod === "8.95" ? 8.95 : 0
+      const totalWithShipping = subtotal + shippingCost
+
+      setTotalPrice(totalWithShipping)
+      setPricePerSticker(subtotal / quantity)
       setShowArtworkSection(true)
     } else {
       setTotalPrice(0)
       setPricePerSticker(0)
       setShowArtworkSection(false)
+      setShippingMessage("")
     }
   }
 
@@ -267,6 +355,12 @@ export default function StickerCalculator() {
               </div>
               <div className="text-xs md:text-sm text-gray-600">= ${pricePerSticker.toFixed(2)} per sticker</div>
 
+              {shippingMessage && (
+                <div className="text-sm md:text-base text-blue-600 font-medium bg-blue-50 p-2 rounded">
+                  {shippingMessage}
+                </div>
+              )}
+
               <div className="flex flex-col">
                 <label htmlFor="shipping-method" className="font-semibold text-black mb-1 text-sm md:text-base">
                   Shipping Method
@@ -275,10 +369,28 @@ export default function StickerCalculator() {
                   id="shipping-method"
                   value={shippingMethod}
                   onChange={(e) => setShippingMethod(e.target.value)}
-                  className="p-2 md:p-3 border border-gray-300 rounded text-black bg-white text-sm md:text-base"
+                  disabled={shippingMethod.startsWith("0.00")}
+                  className={`p-2 md:p-3 border border-gray-300 rounded text-black text-sm md:text-base ${
+                    shippingMethod.startsWith("0.00") ? "bg-gray-100 cursor-not-allowed" : "bg-white"
+                  }`}
                 >
-                  <option value="13.95">Express $13.95</option>
-                  <option value="8.95">Standard $8.95</option>
+                  {(() => {
+                    const subtotal =
+                      totalPrice - (shippingMethod === "13.95" ? 13.95 : shippingMethod === "8.95" ? 8.95 : 0)
+
+                    if (subtotal < 60) {
+                      return (
+                        <>
+                          <option value="13.95">Express $13.95</option>
+                          <option value="8.95">Standard $8.95</option>
+                        </>
+                      )
+                    } else if (subtotal >= 60 && subtotal < 100) {
+                      return <option value="0.00-standard">Standard (Free)</option>
+                    } else {
+                      return <option value="0.00-express">Express (Free)</option>
+                    }
+                  })()}
                 </select>
               </div>
             </section>
@@ -322,17 +434,52 @@ export default function StickerCalculator() {
               </div>
 
               {artworkMethod === "ready" && (
-                <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 md:p-5 text-center bg-gray-50">
-                  <label
-                    htmlFor="upload-artwork"
-                    className="block cursor-pointer text-black font-semibold text-sm md:text-base"
-                  >
-                    Click to upload artwork
-                  </label>
-                  <input type="file" id="upload-artwork" name="upload-artwork" className="hidden" />
-                  <div className="mt-2 text-xs md:text-sm text-gray-500">
-                    Accepted file types: ai, eps, pdf, png, jpg. Max: 250MB
+                <div className="space-y-4">
+                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 md:p-5 text-center bg-gray-50 hover:bg-gray-100 transition-colors">
+                    <label
+                      htmlFor="upload-artwork"
+                      className="block cursor-pointer text-black font-semibold text-sm md:text-base"
+                    >
+                      {isUploading ? "Uploading..." : "Click to upload artwork"}
+                    </label>
+                    <input
+                      type="file"
+                      id="upload-artwork"
+                      name="upload-artwork"
+                      className="hidden"
+                      multiple
+                      accept=".ai,.eps,.pdf,.png,.jpg,.jpeg"
+                      onChange={handleImageUpload}
+                      disabled={isUploading}
+                    />
+                    <div className="mt-2 text-xs md:text-sm text-gray-500">
+                      Accepted file types: ai, eps, pdf, png, jpg. Max: 250MB
+                    </div>
                   </div>
+
+                  {uploadedImages.length > 0 && (
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                      {uploadedImages.map((imageUrl, index) => (
+                        <div key={index} className="relative group">
+                          <div className="aspect-square border border-gray-300 rounded-lg overflow-hidden bg-gray-50">
+                            <img
+                              src={imageUrl || "/placeholder.svg"}
+                              alt={`Uploaded artwork ${index + 1}`}
+                              className="w-full h-full object-cover"
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => removeImage(imageUrl)}
+                            className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center text-sm font-bold hover:bg-red-600 transition-colors"
+                            title="Remove image"
+                          >
+                            ❌
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
             </section>
