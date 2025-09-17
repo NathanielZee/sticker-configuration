@@ -174,16 +174,16 @@ export default function StickerCalculator() {
 
   return (
     <main className="min-h-screen bg-gray-50 p-2 sm:p-4 flex items-center justify-center">
-      <div className="w-full max-w-sm sm:max-w-md lg:max-w-xl xl:max-w-2xl bg-white rounded-lg p-4 sm:p-6 lg:p-8 shadow-sm border border-gray-200">
-        <form className="space-y-4 sm:space-y-6">
+      <div className="w-full max-w-xs sm:max-w-md lg:max-w-xl xl:max-w-2xl bg-white rounded-lg p-3 sm:p-6 lg:p-8 shadow-sm border border-gray-200">
+        <form className="space-y-3 sm:space-y-6">
           {currentStep === "configure" && (
             <>
               <div className="space-y-2">
                 <div className="flex justify-between items-center">
-                  <label htmlFor="size" className="text-gray-700 font-medium text-sm">
+                  <label htmlFor="size" className="text-gray-700 font-medium text-xs sm:text-sm">
                     Size
                   </label>
-                  <button type="button" className="text-blue-500 text-sm hover:underline">
+                  <button type="button" className="text-blue-500 text-xs sm:text-sm hover:underline">
                     Size help
                   </button>
                 </div>
@@ -202,7 +202,7 @@ export default function StickerCalculator() {
                       setCustomHeight(null)
                     }
                   }}
-                  className="w-full p-3 border border-gray-300 rounded-md text-gray-900 bg-white appearance-none"
+                  className="w-full p-2 sm:p-3 border border-gray-300 rounded-md text-gray-900 bg-white appearance-none text-sm sm:text-base"
                   style={{
                     backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' strokeLinecap='round' strokeLinejoin='round' strokeWidth='1.5' d='m6 8 4 4 4-4'/%3e%3c/svg%3e")`,
                     backgroundPosition: "right 0.5rem center",
@@ -224,14 +224,14 @@ export default function StickerCalculator() {
                     <input
                       type="number"
                       placeholder="Width (mm)"
-                      className="border border-gray-300 rounded-md p-2 w-1/2"
+                      className="border border-gray-300 rounded-md p-2 w-1/2 text-sm sm:text-base"
                       value={customWidth ?? ""}
                       onChange={(e) => setCustomWidth(Number(e.target.value) || null)}
                     />
                     <input
                       type="number"
                       placeholder="Height (mm)"
-                      className="border border-gray-300 rounded-md p-2 w-1/2"
+                      className="border border-gray-300 rounded-md p-2 w-1/2 text-sm sm:text-base"
                       value={customHeight ?? ""}
                       onChange={(e) => setCustomHeight(Number(e.target.value) || null)}
                     />
@@ -240,7 +240,7 @@ export default function StickerCalculator() {
               </div>
 
               <div className="space-y-2">
-                <label htmlFor="quantity" className="text-gray-700 font-medium text-sm">
+                <label htmlFor="quantity" className="text-gray-700 font-medium text-xs sm:text-sm">
                   Quantity
                 </label>
                 <select
@@ -256,7 +256,7 @@ export default function StickerCalculator() {
                       setCustomQuantity(null)
                     }
                   }}
-                  className="w-full p-3 border border-gray-300 rounded-md text-gray-900 bg-white appearance-none"
+                  className="w-full p-2 sm:p-3 border border-gray-300 rounded-md text-gray-900 bg-white appearance-none text-sm sm:text-base"
                   style={{
                     backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' strokeLinecap='round' strokeLinejoin='round' strokeWidth='1.5' d='m6 8 4 4 4-4'/%3e%3c/svg%3e")`,
                     backgroundPosition: "right 0.5rem center",
@@ -278,13 +278,13 @@ export default function StickerCalculator() {
                     type="number"
                     min={1}
                     placeholder="Enter quantity"
-                    className="border border-gray-300 rounded-md p-2 w-full mt-2"
+                    className="border border-gray-300 rounded-md p-2 w-full mt-2 text-sm sm:text-base"
                     value={customQuantity ?? ""}
                     onChange={(e) => setCustomQuantity(Number(e.target.value) || null)}
                   />
                 )}
 
-                {quantity > 0 && <div className="text-green-600 text-sm font-medium">{upsellMsg}</div>}
+                {quantity > 0 && <div className="text-green-600 text-xs sm:text-sm font-medium">{upsellMsg}</div>}
               </div>
             </>
           )}
@@ -294,20 +294,20 @@ export default function StickerCalculator() {
               <button
                 type="button"
                 onClick={handleBack}
-                className="flex items-center gap-2 text-gray-600 hover:text-gray-800 text-sm"
+                className="flex items-center gap-2 text-gray-600 hover:text-gray-800 text-xs sm:text-sm"
               >
                 ← Back
               </button>
 
               <div>
-                <label htmlFor="finish" className="text-gray-700 font-medium text-sm block mb-2">
+                <label htmlFor="finish" className="text-gray-700 font-medium text-xs sm:text-sm block mb-2">
                   Finish
                 </label>
                 <select
                   id="finish"
                   value={selectedFinish}
                   onChange={(e) => setSelectedFinish(e.target.value)}
-                  className="w-full p-3 border border-gray-300 rounded-md text-gray-900 bg-white"
+                  className="w-full p-2 sm:p-3 border border-gray-300 rounded-md text-gray-900 bg-white text-sm sm:text-base"
                 >
                   <option value="">-- Select --</option>
                   <option value="standard">Standard</option>
@@ -324,7 +324,7 @@ export default function StickerCalculator() {
                   onChange={(e) => setIsReorder(e.target.checked)}
                   className="w-4 h-4"
                 />
-                <label htmlFor="reorder" className="text-gray-700 font-medium text-sm">
+                <label htmlFor="reorder" className="text-gray-700 font-medium text-xs sm:text-sm">
                   Is this a reorder?
                 </label>
               </div>
@@ -332,7 +332,7 @@ export default function StickerCalculator() {
               {isReorder && (
                 <div className="space-y-3">
                   <div>
-                    <label htmlFor="invoice-number" className="text-gray-700 font-medium text-sm block mb-2">
+                    <label htmlFor="invoice-number" className="text-gray-700 font-medium text-xs sm:text-sm block mb-2">
                       Invoice Number
                     </label>
                     <input
@@ -341,14 +341,14 @@ export default function StickerCalculator() {
                       value={invoiceNumber}
                       onChange={(e) => setInvoiceNumber(e.target.value)}
                       placeholder="Enter your invoice number"
-                      className="w-full p-3 border border-gray-300 rounded-md text-gray-900"
+                      className="w-full p-2 sm:p-3 border border-gray-300 rounded-md text-gray-900 text-sm sm:text-base"
                     />
                   </div>
 
                   {invoiceNumber.trim() && (
                     <button
                       type="button"
-                      className="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600 transition-colors text-sm font-medium"
+                      className="bg-blue-500 text-white px-3 sm:px-4 py-2 rounded-md hover:bg-blue-600 transition-colors text-xs sm:text-sm font-medium"
                     >
                       Skip proof
                     </button>
@@ -357,13 +357,13 @@ export default function StickerCalculator() {
               )}
 
               <div>
-                <label className="text-gray-700 font-medium text-sm block mb-3">
+                <label className="text-gray-700 font-medium text-xs sm:text-sm block mb-3">
                   How will your print ready artwork be supplied?
                 </label>
                 <div className="flex flex-col gap-2">
                   <button
                     type="button"
-                    className={`px-3 py-2 border border-gray-300 rounded font-medium cursor-pointer text-sm ${
+                    className={`px-3 py-2 border border-gray-300 rounded font-medium cursor-pointer text-xs sm:text-sm ${
                       artworkMethod === "ready" ? "bg-black text-white" : "bg-gray-100 text-black"
                     }`}
                     onClick={() => setArtworkMethod("ready")}
@@ -372,7 +372,7 @@ export default function StickerCalculator() {
                   </button>
                   <button
                     type="button"
-                    className={`px-3 py-2 border border-gray-300 rounded font-medium cursor-pointer text-sm ${
+                    className={`px-3 py-2 border border-gray-300 rounded font-medium cursor-pointer text-xs sm:text-sm ${
                       artworkMethod === "design" ? "bg-black text-white" : "bg-gray-100 text-black"
                     }`}
                     onClick={() => setArtworkMethod("design")}
@@ -381,7 +381,7 @@ export default function StickerCalculator() {
                   </button>
                   <button
                     type="button"
-                    className={`px-3 py-2 border border-gray-300 rounded font-medium cursor-pointer text-sm ${
+                    className={`px-3 py-2 border border-gray-300 rounded font-medium cursor-pointer text-xs sm:text-sm ${
                       artworkMethod === "help" ? "bg-black text-white" : "bg-gray-100 text-black"
                     }`}
                     onClick={() => setArtworkMethod("help")}
@@ -393,8 +393,11 @@ export default function StickerCalculator() {
 
               {artworkMethod === "ready" && (
                 <div className="space-y-4">
-                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center bg-gray-50 hover:bg-gray-100 transition-colors">
-                    <label htmlFor="upload-artwork" className="block cursor-pointer text-gray-700 font-medium text-sm">
+                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-3 sm:p-4 text-center bg-gray-50 hover:bg-gray-100 transition-colors">
+                    <label
+                      htmlFor="upload-artwork"
+                      className="block cursor-pointer text-gray-700 font-medium text-xs sm:text-sm"
+                    >
                       {isUploading ? "Uploading..." : "Click to upload artwork"}
                     </label>
                     <input
@@ -439,14 +442,14 @@ export default function StickerCalculator() {
               )}
 
               <div>
-                <label htmlFor="shipping-method" className="text-gray-700 font-medium text-sm block mb-2">
+                <label htmlFor="shipping-method" className="text-gray-700 font-medium text-xs sm:text-sm block mb-2">
                   Shipping Method
                 </label>
                 <select
                   id="shipping-method"
                   value={shippingMethod}
                   onChange={(e) => setShippingMethod(e.target.value)}
-                  className="w-full p-3 border border-gray-300 rounded-md text-gray-900 bg-white"
+                  className="w-full p-2 sm:p-3 border border-gray-300 rounded-md text-gray-900 bg-white text-sm sm:text-base"
                   disabled={total >= 60}
                 >
                   {total >= 100 ? (
@@ -460,15 +463,17 @@ export default function StickerCalculator() {
                     </>
                   )}
                 </select>
-                {shippingMessage && <div className="text-green-600 text-sm mt-2 font-medium">{shippingMessage}</div>}
+                {shippingMessage && (
+                  <div className="text-green-600 text-xs sm:text-sm mt-2 font-medium">{shippingMessage}</div>
+                )}
               </div>
             </>
           )}
 
-          <div className="border-t border-gray-200 pt-6">
+          <div className="border-t border-gray-200 pt-4 sm:pt-6">
             <div className="flex justify-between items-center mb-4">
-              <div className="text-4xl font-bold text-gray-900">${finalTotal.toFixed(2)}</div>
-              <div className="text-gray-600 text-sm">
+              <div className="text-2xl sm:text-4xl font-bold text-gray-900">${finalTotal.toFixed(2)}</div>
+              <div className="text-gray-600 text-xs sm:text-sm">
                 ${quantity > 0 ? (finalTotal / quantity).toFixed(2) : "0.00"} / sticker
               </div>
             </div>
@@ -476,7 +481,7 @@ export default function StickerCalculator() {
             <button
               type="button"
               onClick={handleContinue}
-              className={`w-full font-semibold py-3 px-4 rounded-md transition-colors ${
+              className={`w-full font-semibold py-3 px-4 rounded-md transition-colors text-sm sm:text-base ${
                 isFormReady ? "bg-black text-white hover:bg-gray-800" : "bg-gray-300 text-gray-500 cursor-not-allowed"
               }`}
               disabled={!isFormReady}
@@ -485,7 +490,7 @@ export default function StickerCalculator() {
             </button>
 
             {currentStep === "configure" && (
-              <div className="text-center text-gray-500 text-sm mt-2">Next: upload artwork →</div>
+              <div className="text-center text-gray-500 text-xs sm:text-sm mt-2">Next: upload artwork →</div>
             )}
           </div>
         </form>
