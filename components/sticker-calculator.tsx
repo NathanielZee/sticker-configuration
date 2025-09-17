@@ -6,31 +6,202 @@ import { createClient } from "@supabase/supabase-js"
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
-const RATE_PER_M2 = 200
+const PRICING = {
+  meta: {
+    currency: "AUD",
+    standardSizes: ["50x50", "75x75", "100x100", "125x125"],
+    qtyTiers: [50, 100, 300, 500, 1000, 2000, 3000, 5000, 10000],
+  },
+  priceTable: {
+    "100x100": {
+      "50": 118,
+      "100": 163,
+      "300": 312,
+      "500": 442,
+      "1000": 732,
+      "2000": 1239,
+      "3000": 1698,
+      "5000": 2540,
+      "10000": 4414,
+    },
+    "75x75": {
+      "50": 99,
+      "100": 139,
+      "300": 268,
+      "500": 380,
+      "1000": 629,
+      "2000": 1069,
+      "3000": 1465,
+      "5000": 2215,
+      "10000": 3895,
+    },
+    "50x50": {
+      "50": 78,
+      "100": 112,
+      "300": 216,
+      "500": 311,
+      "1000": 523,
+      "2000": 895,
+      "3000": 1249,
+      "5000": 1889,
+      "10000": 3299,
+    },
+    "125x125": {
+      "50": 139,
+      "100": 189,
+      "300": 360,
+      "500": 508,
+      "1000": 836,
+      "2000": 1420,
+      "3000": 1949,
+      "5000": 2909,
+      "10000": 5059,
+    },
+  },
+  fallback: {
+    ratePerM2: 120,
+    includeSpacingMm: 0,
+    minW: 20,
+    maxW: 1000,
+    minH: 20,
+    maxH: 1000,
+    minQty: 10,
+    maxQty: 200000,
+    sizeStep: 5,
+  },
+}
 
-const discountTiers = [
-  { min: 1, max: 9, discount: 0 },
-  { min: 10, max: 24, discount: 0.1 },
-  { min: 25, max: 49, discount: 0.2 },
-  { min: 50, max: 99, discount: 0.3 },
-  { min: 100, max: 249, discount: 0.4 },
-  { min: 250, max: 499, discount: 0.5 },
-  { min: 500, max: 999, discount: 0.55 },
-  { min: 1000, max: Number.POSITIVE_INFINITY, discount: 0.6 },
-]
+// Helper functions
+const clamp = (v: number, lo: number, hi: number) => Math.min(Math.max(v, lo), hi)
+const snap = (v: number, step: number) => Math.round(v / step) * step
+
+function sizeKey(w: number, h: number) {
+  return `${w}x${h}`
+}
+function isStandardSize(w: number, h: number) {
+  return PRICING.meta.standardSizes.includes(sizeKey(w, h))
+}
+function sortedQtyTiers() {
+  return [...PRICING.meta.qtyTiers].sort((a, b) => a - b)
+}
+
+function nextTierInfo(q: number) {
+  const tiers = sortedQtyTiers()
+  for (let i = 0; i < tiers.length; i++) {
+    if (q < tiers[i]) return { nextQty: tiers[i], index: i }
+  }
+  return null
+}
+
+function getLookupTotal(w: number, h: number, q: number) {
+  const table = PRICING.priceTable[sizeKey(w, h) as keyof typeof PRICING.priceTable]
+  if (!table) return null
+  const tiers = sortedQtyTiers()
+  let chosen = null
+  for (const t of tiers) if (q >= t && table[String(t) as keyof typeof table] != null) chosen = t
+  return chosen ? { tierQty: chosen, total: Number(table[String(chosen) as keyof typeof table]) } : null
+}
+
+function areaUnitPrice(w: number, h: number, ratePerM2: number, spacingMm = 0) {
+  const effW = w + spacingMm
+  const effH = h + spacingMm
+  const areaM2 = (effW / 1000) * (effH / 1000)
+  return areaM2 * ratePerM2
+}
+
+// Main pricing function
+function priceSticker({ widthMm, heightMm, qty }: { widthMm: number; heightMm: number; qty: number }) {
+  const fb = PRICING.fallback
+
+  const w = snap(clamp(Number.parseInt(String(widthMm || 0), 10), fb.minW, fb.maxW), fb.sizeStep)
+  const h = snap(clamp(Number.parseInt(String(heightMm || 0), 10), fb.minH, fb.maxH), fb.sizeStep)
+  const q = clamp(Number.parseInt(String(qty || 0), 10), fb.minQty, fb.maxQty)
+
+  const standard = isStandardSize(w, h)
+  let total: number, unit: number, baseUnit50: number, savePct: number, tierUsed: number | null, next: any
+
+  if (standard) {
+    const look = getLookupTotal(w, h, q)
+    if (!look) throw new Error("No tier found for qty: " + q)
+    total = look.total
+    unit = total / q
+    tierUsed = look.tierQty
+
+    const base50Total = PRICING.priceTable[sizeKey(w, h) as keyof typeof PRICING.priceTable]["50"]
+    const base50Unit = base50Total / 50
+
+    baseUnit50 = base50Unit
+    savePct = Math.round((1 - unit / base50Unit) * 100)
+
+    next = nextTierInfo(q)
+    if (
+      next &&
+      PRICING.priceTable[sizeKey(w, h) as keyof typeof PRICING.priceTable][
+        String(next.nextQty) as keyof (typeof PRICING.priceTable)[keyof typeof PRICING.priceTable]
+      ] != null
+    ) {
+      const nextUnit =
+        Number(
+          PRICING.priceTable[sizeKey(w, h) as keyof typeof PRICING.priceTable][
+            String(next.nextQty) as keyof (typeof PRICING.priceTable)[keyof typeof PRICING.priceTable]
+          ],
+        ) / next.nextQty
+      const nextSave = Math.round((1 - nextUnit / base50Unit) * 100)
+      next = { addMore: next.nextQty - q, nextTier: next.nextQty, nextSavePct: nextSave }
+    } else {
+      next = null
+    }
+  } else {
+    const rate = fb.ratePerM2
+    baseUnit50 = areaUnitPrice(w, h, rate, 0)
+
+    const saveLadder = [
+      { qty: 50, save: 0.0 },
+      { qty: 100, save: 0.31 },
+      { qty: 300, save: 0.56 },
+      { qty: 500, save: 0.63 },
+      { qty: 1000, save: 0.69 },
+      { qty: 2000, save: 0.74 },
+      { qty: 3000, save: 0.76 },
+      { qty: 5000, save: 0.78 },
+      { qty: 10000, save: 0.81 },
+    ]
+    let save = 0
+    for (const step of saveLadder) if (q >= step.qty) save = step.save
+
+    const unitNow = baseUnit50 * (1 - save)
+    unit = unitNow
+    total = unitNow * q
+    savePct = Math.round(save * 100)
+    tierUsed = null
+
+    next = nextTierInfo(q)
+    if (next) {
+      let nextSave = 0
+      for (const step of saveLadder) if (next.nextQty >= step.qty) nextSave = step.save
+      next = { addMore: next.nextQty - q, nextTier: next.nextQty, nextSavePct: Math.round(nextSave * 100) }
+    }
+  }
+
+  return {
+    size: { widthMm: w, heightMm: h, standard },
+    qty: q,
+    pricingMode: standard ? "lookup" : "area-fallback",
+    tierUsed: standard ? tierUsed : null,
+    baseUnit50: +baseUnit50.toFixed(4),
+    unitPrice: +unit.toFixed(4),
+    totalPrice: +total.toFixed(2),
+    savePct,
+    nextTier: next,
+  }
+}
 
 const sizes = [
   { label: "50 × 50 mm", width: 50, height: 50 },
   { label: "75 × 75 mm", width: 75, height: 75 },
   { label: "100 × 100 mm", width: 100, height: 100 },
   { label: "125 × 125 mm", width: 125, height: 125 },
-  { label: "150 × 150 mm", width: 150, height: 150 },
 ]
-
-function getDiscountRate(qty: number) {
-  const tier = discountTiers.find((t) => qty >= t.min && qty <= t.max)
-  return tier ? tier.discount : 0
-}
 
 export default function StickerCalculator() {
   const [selectedSize, setSelectedSize] = useState<(typeof sizes)[0] | null>(null)
@@ -53,17 +224,32 @@ export default function StickerCalculator() {
   const height = customHeight || selectedSize?.height || 0
   const quantity = customQuantity || selectedQuantity || 0
 
-  const area_m2 = (width / 1000) * (height / 1000)
-  const basePrice = area_m2 * RATE_PER_M2
-  const subtotal = basePrice * quantity
-  const discountRate = getDiscountRate(quantity)
-  const discountAmount = subtotal * discountRate
-  const total = subtotal - discountAmount
+  let pricingResult = null
+  let total = 0
+  let unitPrice = 0
+  let upsellMsg = ""
 
-  const nextTier = discountTiers.find((t) => quantity < t.min)
-  const upsellMsg = nextTier
-    ? `Add ${nextTier.min - quantity} more to save ${nextTier.discount * 100}%!`
-    : `You saved ${discountRate * 100}% ($${discountAmount.toFixed(2)})`
+  if (width > 0 && height > 0 && quantity > 0) {
+    try {
+      pricingResult = priceSticker({
+        widthMm: width,
+        heightMm: height,
+        qty: quantity,
+      })
+
+      total = pricingResult.totalPrice
+      unitPrice = pricingResult.unitPrice
+
+      // Generate upsell message
+      if (pricingResult.nextTier) {
+        upsellMsg = `Save ${pricingResult.nextTier.nextSavePct}% when you add ${pricingResult.nextTier.addMore} stickers`
+      } else if (pricingResult.savePct > 0) {
+        upsellMsg = `You saved ${pricingResult.savePct}%`
+      }
+    } catch (error) {
+      console.error("Pricing error:", error)
+    }
+  }
 
   let shippingCost = 0
   let shippingMessage = ""
@@ -265,11 +451,51 @@ export default function StickerCalculator() {
                   }}
                 >
                   <option value="">Select</option>
-                  {[10, 25, 50, 100, 250, 500, 1000].map((q) => (
-                    <option key={q} value={q}>
-                      {q}
-                    </option>
-                  ))}
+                  {(() => {
+                    if (width > 0 && height > 0) {
+                      const isStandard = isStandardSize(width, height)
+
+                      if (isStandard) {
+                        // Show prices from lookup table
+                        const sizeKeyStr = sizeKey(width, height)
+                        const priceData = PRICING.priceTable[sizeKeyStr as keyof typeof PRICING.priceTable]
+
+                        return PRICING.meta.qtyTiers
+                          .map((qty) => {
+                            const price = priceData?.[String(qty) as keyof typeof priceData]
+                            return price ? (
+                              <option key={qty} value={qty}>
+                                {qty} stickers • ${price}
+                              </option>
+                            ) : null
+                          })
+                          .filter(Boolean)
+                      } else {
+                        // Calculate prices for custom sizes
+                        return PRICING.meta.qtyTiers
+                          .map((qty) => {
+                            try {
+                              const result = priceSticker({ widthMm: width, heightMm: height, qty })
+                              return (
+                                <option key={qty} value={qty}>
+                                  {qty} stickers • ${result.totalPrice}
+                                </option>
+                              )
+                            } catch {
+                              return null
+                            }
+                          })
+                          .filter(Boolean)
+                      }
+                    } else {
+                      // No size selected, show basic quantities
+                      return PRICING.meta.qtyTiers.map((q) => (
+                        <option key={q} value={q}>
+                          {q} stickers
+                        </option>
+                      ))
+                    }
+                  })()}
                   <option value="custom">Custom quantity</option>
                 </select>
 
@@ -284,7 +510,9 @@ export default function StickerCalculator() {
                   />
                 )}
 
-                {quantity > 0 && <div className="text-green-600 text-xs sm:text-sm font-medium">{upsellMsg}</div>}
+                {quantity > 0 && upsellMsg && (
+                  <div className="text-green-600 text-xs sm:text-sm font-medium">{upsellMsg}</div>
+                )}
               </div>
             </>
           )}
