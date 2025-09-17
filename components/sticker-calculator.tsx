@@ -96,9 +96,23 @@ function nextTierInfo(q: number) {
 function getLookupTotal(w: number, h: number, q: number) {
   const table = PRICING.priceTable[sizeKey(w, h) as keyof typeof PRICING.priceTable]
   if (!table) return null
+
   const tiers = sortedQtyTiers()
   let chosen = null
-  for (const t of tiers) if (q >= t && table[String(t) as keyof typeof table] != null) chosen = t
+
+  for (const t of tiers) {
+    if (q >= t && table[String(t) as keyof typeof table] != null) {
+      chosen = t
+    }
+  }
+
+  if (chosen === null && q > 0) {
+    const lowestTier = Math.min(...tiers)
+    if (table[String(lowestTier) as keyof typeof table] != null) {
+      chosen = lowestTier
+    }
+  }
+
   return chosen ? { tierQty: chosen, total: Number(table[String(chosen) as keyof typeof table]) } : null
 }
 
@@ -118,38 +132,55 @@ function priceSticker({ widthMm, heightMm, qty }: { widthMm: number; heightMm: n
   const q = clamp(Number.parseInt(String(qty || 0), 10), fb.minQty, fb.maxQty)
 
   const standard = isStandardSize(w, h)
-  let total: number, unit: number, baseUnit50: number, savePct: number, tierUsed: number | null, next: any
+  let total: number, unit: number, baseUnit50: number, savePct: number, tierUsed: number | null = null, next: any
 
   if (standard) {
     const look = getLookupTotal(w, h, q)
-    if (!look) throw new Error("No tier found for qty: " + q)
-    total = look.total
-    unit = total / q
-    tierUsed = look.tierQty
-
-    const base50Total = PRICING.priceTable[sizeKey(w, h) as keyof typeof PRICING.priceTable]["50"]
-    const base50Unit = base50Total / 50
-
-    baseUnit50 = base50Unit
-    savePct = Math.round((1 - unit / base50Unit) * 100)
-
-    next = nextTierInfo(q)
-    if (
-      next &&
-      PRICING.priceTable[sizeKey(w, h) as keyof typeof PRICING.priceTable][
-        String(next.nextQty) as keyof (typeof PRICING.priceTable)[keyof typeof PRICING.priceTable]
-      ] != null
-    ) {
-      const nextUnit =
-        Number(
-          PRICING.priceTable[sizeKey(w, h) as keyof typeof PRICING.priceTable][
-            String(next.nextQty) as keyof (typeof PRICING.priceTable)[keyof typeof PRICING.priceTable]
-          ],
-        ) / next.nextQty
-      const nextSave = Math.round((1 - nextUnit / base50Unit) * 100)
-      next = { addMore: next.nextQty - q, nextTier: next.nextQty, nextSavePct: nextSave }
+    if (!look) {
+      const rate = fb.ratePerM2
+      baseUnit50 = areaUnitPrice(w, h, rate, 0)
+      const unitNow = baseUnit50
+      unit = unitNow
+      total = unitNow * q
+      savePct = 0
+      next = nextTierInfo(q)
     } else {
-      next = null
+      total = look.total
+
+      if (q < look.tierQty) {
+        const tierUnitPrice = look.total / look.tierQty
+        unit = tierUnitPrice
+        total = tierUnitPrice * q
+      } else {
+        unit = total / q
+      }
+
+      tierUsed = look.tierQty
+
+      const base50Total = PRICING.priceTable[sizeKey(w, h) as keyof typeof PRICING.priceTable]["50"]
+      const base50Unit = base50Total / 50
+
+      baseUnit50 = base50Unit
+      savePct = Math.round((1 - unit / base50Unit) * 100)
+
+      next = nextTierInfo(q)
+      if (
+        next &&
+        PRICING.priceTable[sizeKey(w, h) as keyof typeof PRICING.priceTable][
+          String(next.nextQty) as keyof (typeof PRICING.priceTable)[keyof typeof PRICING.priceTable]
+        ] != null
+      ) {
+        const nextUnit =
+          Number(
+            PRICING.priceTable[sizeKey(w, h) as keyof typeof PRICING.priceTable][
+              String(next.nextQty) as keyof (typeof PRICING.priceTable)[keyof typeof PRICING.priceTable]
+            ],
+          ) / next.nextQty
+        const nextSave = Math.round((1 - nextUnit / base50Unit) * 100)
+        next = { addMore: next.nextQty - q, nextTier: next.nextQty, nextSavePct: nextSave }
+      } else {
+        next = null
+      }
     }
   } else {
     const rate = fb.ratePerM2
