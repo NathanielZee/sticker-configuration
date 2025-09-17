@@ -173,9 +173,9 @@ export default function StickerCalculator() {
   const isFormReady = (selectedSize || (customWidth && customHeight)) && (selectedQuantity || customQuantity)
 
   return (
-    <main className="min-h-screen bg-gray-50 p-4 flex items-center justify-center">
-      <div className="max-w-md w-full bg-white rounded-lg p-6 shadow-sm border border-gray-200">
-        <form className="space-y-6">
+    <main className="min-h-screen bg-gray-50 p-2 sm:p-4 flex items-center justify-center">
+      <div className="w-full max-w-sm sm:max-w-md lg:max-w-xl xl:max-w-2xl bg-white rounded-lg p-4 sm:p-6 lg:p-8 shadow-sm border border-gray-200">
+        <form className="space-y-4 sm:space-y-6">
           {currentStep === "configure" && (
             <>
               <div className="space-y-2">
