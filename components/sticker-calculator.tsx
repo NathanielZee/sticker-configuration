@@ -593,13 +593,11 @@ export default function StickerCalculator() {
                       onChange={(e) => setEnableSpecialPricing(e.target.checked)}
                       className="w-4 h-4"
                     />
-                    <label htmlFor="demo-special-pricing" className="text-orange-800 font-medium text-sm">
+                    <label htmlFor="demo-special-pricing" className="text-orange-800 font-medium text-[0.65rem] sm:text-xs md:text-sm whitespace-nowrap truncate max-w-full block">
                       Enable Demo Special Pricing (30% off)
                     </label>
                   </div>
-                  <p className="text-orange-700 text-xs mt-1">
-                    DEMO ONLY: Toggle to see how special promotional pricing would work
-                  </p>
+                  {/* Text removed as requested */}
                 </div>
 
                 {/* Upsell message - shows different content based on special pricing state */}
