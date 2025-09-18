@@ -250,32 +250,77 @@ export default function StickerCalculator() {
   const [uploadedImages, setUploadedImages] = useState<string[]>([])
   const [isUploading, setIsUploading] = useState(false)
   const [currentStep, setCurrentStep] = useState<"configure" | "details">("configure")
+  const [enableSpecialPricing, setEnableSpecialPricing] = useState(false)
 
   const width = customWidth || selectedSize?.width || 0
   const height = customHeight || selectedSize?.height || 0
   const quantity = customQuantity || selectedQuantity || 0
 
+  function applyDemoSpecialPricing(normalPrice: number, quantity: number, isEnabled: boolean) {
+    if (!isEnabled) return null
+
+    const isSpecialCombo =
+      (width === 75 && height === 75 && quantity === 50) || (width === 100 && height === 100 && quantity === 100)
+
+    if (!isSpecialCombo) return null
+
+    // Apply 30% discount as demo special pricing
+    const discountRate = 0.3
+    const specialPrice = +(normalPrice * (1 - discountRate)).toFixed(2)
+    const savingsAmount = +(normalPrice - specialPrice).toFixed(2)
+    const savingsPercent = Math.round(discountRate * 100)
+
+    return {
+      specialPrice,
+      savingsAmount,
+      savingsPercent,
+      originalPrice: normalPrice,
+    }
+  }
+
   let pricingResult = null
   let total = 0
   let unitPrice = 0
   let upsellMsg = ""
+  let isSpecialDeal = false
+  let originalPrice = 0
+  let savingsAmount = 0
 
   if (width > 0 && height > 0 && quantity > 0) {
     try {
+      // Get normal pricing first
       pricingResult = priceSticker({
         widthMm: width,
         heightMm: height,
         qty: quantity,
       })
 
-      total = pricingResult.totalPrice
-      unitPrice = pricingResult.unitPrice
+      const normalTotal = pricingResult.totalPrice
 
-      // Generate upsell message
-      if (pricingResult.nextTier) {
-        upsellMsg = `Save ${pricingResult.nextTier.nextSavePct}% when you add ${pricingResult.nextTier.addMore} stickers`
-      } else if (pricingResult.savePct > 0) {
-        upsellMsg = `You saved ${pricingResult.savePct}%`
+      // Check if demo special pricing is enabled
+      const specialDeal = applyDemoSpecialPricing(normalTotal, quantity, enableSpecialPricing)
+
+      if (specialDeal) {
+        // Use special pricing
+        total = specialDeal.specialPrice
+        unitPrice = +(total / quantity).toFixed(4)
+        isSpecialDeal = true
+        originalPrice = specialDeal.originalPrice
+        savingsAmount = specialDeal.savingsAmount
+
+        upsellMsg = `DEMO SPECIAL! Save $${savingsAmount} (${specialDeal.savingsPercent}% off)`
+      } else {
+        // Use normal pricing
+        total = pricingResult.totalPrice
+        unitPrice = pricingResult.unitPrice
+        isSpecialDeal = false
+
+        // Normal upsell message
+        if (pricingResult.nextTier) {
+          upsellMsg = `Save ${pricingResult.nextTier.nextSavePct}% when you add ${pricingResult.nextTier.addMore} stickers`
+        } else if (pricingResult.savePct > 0) {
+          upsellMsg = `You saved ${pricingResult.savePct}%`
+        }
       }
     } catch (error) {
       console.error("Pricing error:", error)
@@ -400,9 +445,6 @@ export default function StickerCalculator() {
                   <label htmlFor="size" className="text-gray-700 font-medium text-xs sm:text-sm">
                     Size
                   </label>
-                  <button type="button" className="text-blue-500 text-xs sm:text-sm hover:underline">
-                    Size help
-                  </button>
                 </div>
                 <select
                   id="size"
@@ -541,8 +583,30 @@ export default function StickerCalculator() {
                   />
                 )}
 
+                {/* Demo Special Pricing Toggle - Remove this after WordPress integration */}
+                <div className="p-3 border border-orange-200 rounded bg-orange-50">
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="checkbox"
+                      id="demo-special-pricing"
+                      checked={enableSpecialPricing}
+                      onChange={(e) => setEnableSpecialPricing(e.target.checked)}
+                      className="w-4 h-4"
+                    />
+                    <label htmlFor="demo-special-pricing" className="text-orange-800 font-medium text-sm">
+                      Enable Demo Special Pricing (30% off)
+                    </label>
+                  </div>
+                  <p className="text-orange-700 text-xs mt-1">
+                    DEMO ONLY: Toggle to see how special promotional pricing would work
+                  </p>
+                </div>
+
+                {/* Upsell message - shows different content based on special pricing state */}
                 {quantity > 0 && upsellMsg && (
-                  <div className="text-green-600 text-xs sm:text-sm font-medium">{upsellMsg}</div>
+                  <div className="text-green-600 text-xs sm:text-sm font-medium">
+                    {upsellMsg}
+                  </div>
                 )}
               </div>
             </>
@@ -569,9 +633,9 @@ export default function StickerCalculator() {
                   className="w-full p-2 sm:p-3 border border-gray-300 rounded-md text-gray-900 bg-white text-sm sm:text-base"
                 >
                   <option value="">-- Select --</option>
-                  <option value="standard">Standard</option>
-                  <option value="matte">Matte</option>
-                  <option value="gloss">Gloss</option>
+                  <option value="standard">Standard - light scratch resistant great for promo!</option>
+                  <option value="matte">Super Ninja Glossy - 100% weather resistant / dishwasher safe!</option>
+                  <option value="gloss">Moshi Moshi Matte - recommended for indoor use</option>
                 </select>
               </div>
 
@@ -700,6 +764,13 @@ export default function StickerCalculator() {
                 </div>
               )}
 
+              {artworkMethod === "design" && (
+                <div className="p-4 border border-gray-300 rounded bg-gray-50">
+                  <p className="text-gray-700 text-sm">Redirecting to Antigro Designer...</p>
+                  {/* Later you'll integrate with the actual design tool */}
+                </div>
+              )}
+
               <div>
                 <label htmlFor="shipping-method" className="text-gray-700 font-medium text-xs sm:text-sm block mb-2">
                   Shipping Method
@@ -730,12 +801,33 @@ export default function StickerCalculator() {
           )}
 
           <div className="border-t border-gray-200 pt-4 sm:pt-6">
-            <div className="flex justify-between items-center mb-4">
-              <div className="text-2xl sm:text-4xl font-bold text-gray-900">${finalTotal.toFixed(2)}</div>
-              <div className="text-gray-600 text-xs sm:text-sm">
-                ${quantity > 0 ? (finalTotal / quantity).toFixed(2) : "0.00"} / sticker
+            {isSpecialDeal ? (
+              // Special pricing display
+              <>
+                <div className="flex justify-between items-center mb-2">
+                  <div className="text-gray-500 text-lg line-through">${originalPrice.toFixed(2)}</div>
+                  <div className="text-xs text-gray-500 line-through">
+                    ${quantity > 0 ? (originalPrice / quantity).toFixed(2) : "0.00"} / sticker
+                  </div>
+                </div>
+                <div className="flex justify-between items-center mb-4">
+                  <div className="text-2xl sm:text-4xl font-bold text-red-600">
+                    SPECIAL ${(total + shippingCost).toFixed(2)}
+                  </div>
+                  <div className="text-red-600 text-xs sm:text-sm font-semibold">
+                    ${quantity > 0 ? (total / quantity).toFixed(2) : "0.00"} / sticker
+                  </div>
+                </div>
+              </>
+            ) : (
+              // Normal pricing display
+              <div className="flex justify-between items-center mb-4">
+                <div className="text-2xl sm:text-4xl font-bold text-gray-900">${finalTotal.toFixed(2)}</div>
+                <div className="text-gray-600 text-xs sm:text-sm">
+                  ${quantity > 0 ? (finalTotal / quantity).toFixed(2) : "0.00"} / sticker
+                </div>
               </div>
-            </div>
+            )}
 
             <button
               type="button"
