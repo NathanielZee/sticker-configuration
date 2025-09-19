@@ -713,6 +713,12 @@ export default function StickerCalculator() {
                 </div>
               )}
 
+              {artworkMethod === "help" && (
+                <div className="p-4 border border-gray-300 rounded bg-gray-50">
+                  <p className="text-gray-700 text-sm">Feature coming soon...</p>
+                </div>
+              )}
+
               <div>
                 <label htmlFor="shipping-method" className="text-gray-700 font-medium text-xs sm:text-sm block mb-2">
                   Shipping Method
