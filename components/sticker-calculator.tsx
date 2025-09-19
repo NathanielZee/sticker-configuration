@@ -777,3 +777,4 @@ export default function StickerCalculator() {
     </main>
   )
 }
+
