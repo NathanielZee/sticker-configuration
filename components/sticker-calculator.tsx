@@ -9,25 +9,78 @@ const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env
 const PRICING = {
   meta: {
     currency: "AUD",
-    product: "Holographic Stickers",
-    qtyTiers: [50, 100, 200, 300, 500, 1000, 2000, 3000, 5000, 10000],
+    standardSizes: ["50x50", "75x75", "100x100", "125x125"],
+    qtyTiers: [50, 100, 300, 500, 1000, 2000, 3000, 5000, 10000],
   },
   priceTable: {
-    default: {
-      "50": 134,
-      "100": 189,
-      "200": 285,
-      "300": 373,
-      "500": 533,
-      "1000": 889,
-      "2000": 1689,
-      "3000": 2487,
-      "5000": 4076,
-      "10000": 8025,
+    "100x100": {
+      "50": 118,
+      "100": 163,
+      "300": 312,
+      "500": 442,
+      "1000": 732,
+      "2000": 1239,
+      "3000": 1698,
+      "5000": 2540,
+      "10000": 4414,
     },
+    "75x75": {
+      "50": 99,
+      "100": 139,
+      "300": 268,
+      "500": 380,
+      "1000": 629,
+      "2000": 1069,
+      "3000": 1465,
+      "5000": 2215,
+      "10000": 3895,
+    },
+    "50x50": {
+      "50": 78,
+      "100": 112,
+      "300": 216,
+      "500": 311,
+      "1000": 523,
+      "2000": 895,
+      "3000": 1249,
+      "5000": 1889,
+      "10000": 3299,
+    },
+    "125x125": {
+      "50": 139,
+      "100": 189,
+      "300": 360,
+      "500": 508,
+      "1000": 836,
+      "2000": 1420,
+      "3000": 1949,
+      "5000": 2909,
+      "10000": 5059,
+    },
+  },
+  fallback: {
+    ratePerM2: 120,
+    includeSpacingMm: 0,
+    minW: 20,
+    maxW: 1000,
+    minH: 20,
+    maxH: 1000,
+    minQty: 10,
+    maxQty: 200000,
+    sizeStep: 5,
   },
 }
 
+// Helper functions
+const clamp = (v: number, lo: number, hi: number) => Math.min(Math.max(v, lo), hi)
+const snap = (v: number, step: number) => Math.round(v / step) * step
+
+function sizeKey(w: number, h: number) {
+  return `${w}x${h}`
+}
+function isStandardSize(w: number, h: number) {
+  return PRICING.meta.standardSizes.includes(sizeKey(w, h))
+}
 function sortedQtyTiers() {
   return [...PRICING.meta.qtyTiers].sort((a, b) => a - b)
 }
@@ -40,8 +93,10 @@ function nextTierInfo(q: number) {
   return null
 }
 
-function getLookupTotal(q: number) {
-  const table = PRICING.priceTable.default
+function getLookupTotal(w: number, h: number, q: number) {
+  const table = PRICING.priceTable[sizeKey(w, h) as keyof typeof PRICING.priceTable]
+  if (!table) return null
+
   const tiers = sortedQtyTiers()
   let chosen = null
 
@@ -61,65 +116,119 @@ function getLookupTotal(q: number) {
   return chosen ? { tierQty: chosen, total: Number(table[String(chosen) as keyof typeof table]) } : null
 }
 
-function priceSticker({ qty }: { qty: number }) {
-  const q = Math.max(1, Math.floor(qty || 0))
+function areaUnitPrice(w: number, h: number, ratePerM2: number, spacingMm = 0) {
+  const effW = w + spacingMm
+  const effH = h + spacingMm
+  const areaM2 = (effW / 1000) * (effH / 1000)
+  return areaM2 * ratePerM2
+}
 
-  const tiers = sortedQtyTiers()
-  let chosen = null
+// Main pricing function
+function priceSticker({ widthMm, heightMm, qty }: { widthMm: number; heightMm: number; qty: number }) {
+  const fb = PRICING.fallback
 
-  for (const t of tiers) {
-    if (q >= t && PRICING.priceTable.default[String(t) as keyof typeof PRICING.priceTable.default] != null) {
-      chosen = t
-    }
-  }
+  const w = snap(clamp(Number.parseInt(String(widthMm || 0), 10), fb.minW, fb.maxW), fb.sizeStep)
+  const h = snap(clamp(Number.parseInt(String(heightMm || 0), 10), fb.minH, fb.maxH), fb.sizeStep)
+  const q = clamp(Number.parseInt(String(qty || 0), 10), fb.minQty, fb.maxQty)
 
-  if (chosen === null && q > 0) {
-    const lowestTier = Math.min(...tiers)
-    if (PRICING.priceTable.default[String(lowestTier) as keyof typeof PRICING.priceTable.default] != null) {
-      chosen = lowestTier
-    }
-  }
+  const standard = isStandardSize(w, h)
+  let total: number,
+    unit: number,
+    baseUnit50: number,
+    savePct: number,
+    tierUsed: number | null = null,
+    next: any
 
-  let total = 0
-  let unit: number
-
-  if (chosen) {
-    total = PRICING.priceTable.default[String(chosen) as keyof typeof PRICING.priceTable.default]
-    if (q < chosen) {
-      unit = total / chosen
-      total = unit * q
+  if (standard) {
+    const look = getLookupTotal(w, h, q)
+    if (!look) {
+      const rate = fb.ratePerM2
+      baseUnit50 = areaUnitPrice(w, h, rate, 0)
+      const unitNow = baseUnit50
+      unit = unitNow
+      total = unitNow * q
+      savePct = 0
+      next = nextTierInfo(q)
     } else {
-      unit = total / q
+      total = look.total
+
+      if (q < look.tierQty) {
+        const tierUnitPrice = look.total / look.tierQty
+        unit = tierUnitPrice
+        total = tierUnitPrice * q
+      } else {
+        unit = total / q
+      }
+
+      tierUsed = look.tierQty
+
+      const base50Total = PRICING.priceTable[sizeKey(w, h) as keyof typeof PRICING.priceTable]["50"]
+      const base50Unit = base50Total / 50
+
+      baseUnit50 = base50Unit
+      savePct = Math.round((1 - unit / base50Unit) * 100)
+
+      next = nextTierInfo(q)
+      if (
+        next &&
+        PRICING.priceTable[sizeKey(w, h) as keyof typeof PRICING.priceTable][
+          String(next.nextQty) as keyof (typeof PRICING.priceTable)[keyof typeof PRICING.priceTable]
+        ] != null
+      ) {
+        const nextUnit =
+          Number(
+            PRICING.priceTable[sizeKey(w, h) as keyof typeof PRICING.priceTable][
+              String(next.nextQty) as keyof (typeof PRICING.priceTable)[keyof typeof PRICING.priceTable]
+            ],
+          ) / next.nextQty
+        const nextSave = Math.round((1 - nextUnit / base50Unit) * 100)
+        next = { addMore: next.nextQty - q, nextTier: next.nextQty, nextSavePct: nextSave }
+      } else {
+        next = null
+      }
     }
   } else {
-    return {
-      qty: q,
-      unitPrice: 0,
-      totalPrice: 0,
-      savePct: 0,
-      nextTier: null,
+    const rate = fb.ratePerM2
+    baseUnit50 = areaUnitPrice(w, h, rate, 0)
+
+    const saveLadder = [
+      { qty: 50, save: 0.0 },
+      { qty: 100, save: 0.31 },
+      { qty: 300, save: 0.56 },
+      { qty: 500, save: 0.63 },
+      { qty: 1000, save: 0.69 },
+      { qty: 2000, save: 0.74 },
+      { qty: 3000, save: 0.76 },
+      { qty: 5000, save: 0.78 },
+      { qty: 10000, save: 0.81 },
+    ]
+    let save = 0
+    for (const step of saveLadder) if (q >= step.qty) save = step.save
+
+    const unitNow = baseUnit50 * (1 - save)
+    unit = unitNow
+    total = unitNow * q
+    savePct = Math.round(save * 100)
+    tierUsed = null
+
+    next = nextTierInfo(q)
+    if (next) {
+      let nextSave = 0
+      for (const step of saveLadder) if (next.nextQty >= step.qty) nextSave = step.save
+      next = { addMore: next.nextQty - q, nextTier: next.nextQty, nextSavePct: Math.round(nextSave * 100) }
     }
-  }
-
-  const base50Total = PRICING.priceTable.default["50"]
-  const base50Unit = base50Total / 50
-  const savePct = Math.round((1 - unit / base50Unit) * 100)
-
-  const next = nextTierInfo(q)
-  let nextTierData = null
-  if (next && PRICING.priceTable.default[String(next.nextQty) as keyof typeof PRICING.priceTable.default] != null) {
-    const nextUnit =
-      Number(PRICING.priceTable.default[String(next.nextQty) as keyof typeof PRICING.priceTable.default]) / next.nextQty
-    const nextSave = Math.round((1 - nextUnit / base50Unit) * 100)
-    nextTierData = { addMore: next.nextQty - q, nextTier: next.nextQty, nextSavePct: nextSave }
   }
 
   return {
+    size: { widthMm: w, heightMm: h, standard },
     qty: q,
+    pricingMode: standard ? "lookup" : "area-fallback",
+    tierUsed: standard ? tierUsed : null,
+    baseUnit50: +baseUnit50.toFixed(4),
     unitPrice: +unit.toFixed(4),
     totalPrice: +total.toFixed(2),
-    savePct: Math.max(0, savePct),
-    nextTier: nextTierData,
+    savePct,
+    nextTier: next,
   }
 }
 
@@ -156,12 +265,21 @@ export default function StickerCalculator() {
   let unitPrice = 0
   let upsellMsg = ""
 
-  if (quantity > 0) {
+  if (width > 0 && height > 0 && quantity > 0) {
     try {
-      pricingResult = priceSticker({ qty: quantity })
-      total = pricingResult.totalPrice
+      // Get normal pricing first
+      pricingResult = priceSticker({
+        widthMm: width,
+        heightMm: height,
+        qty: quantity,
+      })
+
+      const normalTotal = pricingResult.totalPrice
+
+      total = normalTotal
       unitPrice = pricingResult.unitPrice
 
+      // Normal upsell message
       if (pricingResult.nextTier) {
         upsellMsg = `Save ${pricingResult.nextTier.nextSavePct}% when you add ${pricingResult.nextTier.addMore} stickers`
       } else if (pricingResult.savePct > 0) {
@@ -369,14 +487,51 @@ export default function StickerCalculator() {
                   }}
                 >
                   <option value="">Select</option>
-                  {PRICING.meta.qtyTiers.map((qty) => {
-                    const price = PRICING.priceTable.default[String(qty) as keyof typeof PRICING.priceTable.default]
-                    return (
-                      <option key={qty} value={qty}>
-                        {qty} stickers • ${price}
-                      </option>
-                    )
-                  })}
+                  {(() => {
+                    if (width > 0 && height > 0) {
+                      const isStandard = isStandardSize(width, height)
+
+                      if (isStandard) {
+                        // Show prices from lookup table
+                        const sizeKeyStr = sizeKey(width, height)
+                        const priceData = PRICING.priceTable[sizeKeyStr as keyof typeof PRICING.priceTable]
+
+                        return PRICING.meta.qtyTiers
+                          .map((qty) => {
+                            const price = priceData?.[String(qty) as keyof typeof priceData]
+                            return price ? (
+                              <option key={qty} value={qty}>
+                                {qty} stickers • ${price}
+                              </option>
+                            ) : null
+                          })
+                          .filter(Boolean)
+                      } else {
+                        // Calculate prices for custom sizes
+                        return PRICING.meta.qtyTiers
+                          .map((qty) => {
+                            try {
+                              const result = priceSticker({ widthMm: width, heightMm: height, qty })
+                              return (
+                                <option key={qty} value={qty}>
+                                  {qty} stickers • ${result.totalPrice}
+                                </option>
+                              )
+                            } catch {
+                              return null
+                            }
+                          })
+                          .filter(Boolean)
+                      }
+                    } else {
+                      // No size selected, show basic quantities
+                      return PRICING.meta.qtyTiers.map((q) => (
+                        <option key={q} value={q}>
+                          {q} stickers
+                        </option>
+                      ))
+                    }
+                  })()}
                   <option value="custom">Custom quantity</option>
                 </select>
 
@@ -391,6 +546,7 @@ export default function StickerCalculator() {
                   />
                 )}
 
+                {/* Upsell message */}
                 {quantity > 0 && upsellMsg && (
                   <div className="text-green-600 text-xs sm:text-sm font-medium">{upsellMsg}</div>
                 )}
@@ -553,12 +709,7 @@ export default function StickerCalculator() {
               {artworkMethod === "design" && (
                 <div className="p-4 border border-gray-300 rounded bg-gray-50">
                   <p className="text-gray-700 text-sm">Redirecting to Antigro Designer...</p>
-                </div>
-              )}
-
-              {artworkMethod === "help" && (
-                <div className="p-4 border border-gray-300 rounded bg-gray-50">
-                  <p className="text-gray-700 text-sm">Feature coming soon...</p>
+                  {/* Later you'll integrate with the actual design tool */}
                 </div>
               )}
 
@@ -592,6 +743,7 @@ export default function StickerCalculator() {
           )}
 
           <div className="border-t border-gray-200 pt-4 sm:pt-6">
+            {/* Normal pricing display */}
             <div className="flex justify-between items-center mb-4">
               <div className="text-2xl sm:text-4xl font-bold text-gray-900">${finalTotal.toFixed(2)}</div>
               <div className="text-gray-600 text-xs sm:text-sm">
