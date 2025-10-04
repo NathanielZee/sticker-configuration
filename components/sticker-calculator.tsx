@@ -6,177 +6,88 @@ import { createClient } from "@supabase/supabase-js"
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 
-const SMule = (() => {
-  const LIMITS = { minW: 20, maxW: 1400, minH: 20, maxH: 1400, minQ: 20, maxQ: 200000 }
+// Sticker Mule Direct Pricing - Copied from their AU site
+const DISCOUNT_LADDER: Record<number, number> = {
+  50: 0.0,
+  100: 0.4,
+  200: 0.61,
+  300: 0.68,
+  500: 0.75,
+  1000: 0.81,
+  2000: 0.85,
+  3000: 0.86,
+  5000: 0.88,
+  10000: 0.9,
+}
 
-  const FACTOR = {
-    50: 1.0,
-    100: 0.75,
-    200: 0.6,
-    300: 0.52,
-    500: 0.4,
-    1000: 0.3,
-    2000: 0.24,
-    3000: 0.21,
-    5000: 0.17,
-    10000: 0.145,
-    20000: 0.1,
+const BASE_50_TOTAL_BY_SIZE: Record<string, number> = {
+  "50x50": 82.0,
+  "75x75": 101.0,
+  "100x100": 125.12,
+  "125x125": 157.45,
+}
+
+// Custom size pricing formula
+const K = 0.005748880748880748
+const B = 67.62779812779813
+
+function getBase50Total(width: number, height: number, presetKey?: string): number {
+  if (presetKey && BASE_50_TOTAL_BY_SIZE[presetKey]) {
+    return BASE_50_TOTAL_BY_SIZE[presetKey]
   }
-  const TIER_MODE = "LOWER"
+  const area = width * height
+  return Math.max(B + K * area, 20)
+}
 
-  const ANCHORS = [
-    { w: 20, h: 20, qty: 10, total: 20, factorOverride: 1.0 },
-    { w: 20, h: 20, qty: 200000, total: 5644, factorOverride: 0.01411 },
-    { w: 50, h: 50, qty: 50, total: 82 },
-    { w: 75, h: 75, qty: 50, total: 98 },
-    { w: 100, h: 100, qty: 50, total: 118 },
-    { w: 125, h: 125, qty: 50, total: 141 },
-    { w: 140, h: 180, qty: 250, total: 502, factorOverride: 0.64 },
-    { w: 150, h: 150, qty: 160, total: 341, factorOverride: 0.75 },
-    { w: 185, h: 95, qty: 650, total: 788, factorOverride: 0.4 },
-    { w: 430, h: 360, qty: 850, total: 5473, factorOverride: 0.4 },
-    { w: 450, h: 450, qty: 6400, total: 53101, factorOverride: 0.6 },
-    { w: 500, h: 350, qty: 240, total: 2081, factorOverride: 0.7 },
-    { w: 800, h: 609, qty: 20000, total: 397780, factorOverride: 0.74 },
-    { w: 914, h: 609, qty: 10, total: 401, factorOverride: 1.0 },
-    { w: 914, h: 609, qty: 200000, total: 4541112, factorOverride: 0.76 },
-  ]
+function ladderDiscountFor(qty: number): number {
+  const tiers = Object.keys(DISCOUNT_LADDER)
+    .map(Number)
+    .sort((a, b) => a - b)
 
-  const SIZE_FACTOR_OVERRIDES: Record<string, Record<number, number>> = {
-    "50×50": { 100: 0.6 },
-    "75×75": { 100: 0.65 },
-    "100×100": { 100: 0.69 },
-    "125×125": { 100: 0.72 },
-    "140×180": { 250: 0.64 },
-    "150×150": { 160: 0.75 },
-    "185×95": { 650: 0.4 },
-    "430×360": { 850: 0.4 },
-    "450×450": { 6400: 0.6 },
-    "500×350": { 240: 0.7 },
-    "800×609": { 20000: 0.74 },
-    "914×609": { 10: 1.0, 200000: 0.76 },
-    "20×20": { 10: 1.0, 200000: 0.01411 },
+  for (let i = tiers.length - 1; i >= 0; i--) {
+    if (qty >= tiers[i]) {
+      return DISCOUNT_LADDER[tiers[i]]
+    }
   }
+  return 0
+}
 
-  const PM2_CLAMP = { min: 50, max: 5000 }
+function unitPriceAtQty(base50Total: number, qty: number): number {
+  const baseUnit = base50Total / 50
+  const discount = ladderDiscountFor(qty)
+  return baseUnit * (1 - discount)
+}
 
-  const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v))
-  const areaM2 = (w: number, h: number) => (w / 1000) * (h / 1000)
+function calculatePrice(width: number, height: number, qty: number) {
+  const sizeKey = `${width}x${height}`
+  const base50 = getBase50Total(width, height, sizeKey)
+  const unitPrice = unitPriceAtQty(base50, qty)
+  const total = unitPrice * qty
+  const savePct = Math.round(ladderDiscountFor(qty) * 100)
 
-  function tierFactor(q: number, factors: Record<number, number>, mode: string = TIER_MODE) {
-    const t = Object.keys(factors)
-      .map(Number)
-      .sort((a, b) => a - b)
-    if (q <= t[0]) return factors[t[0]]
-    if (q >= t[t.length - 1]) return factors[t[t.length - 1]]
-    for (let i = 0; i < t.length - 1; i++) {
-      const lo = t[i],
-        hi = t[i + 1]
-      if (q === hi) return factors[hi]
-      if (q > lo && q < hi) return mode === "LOWER" ? factors[lo] : factors[hi]
-    }
-    return factors[t[t.length - 1]]
-  }
+  // Find next tier
+  const tiers = Object.keys(DISCOUNT_LADDER)
+    .map(Number)
+    .sort((a, b) => a - b)
+  const nextTierQty = tiers.find((t) => t > qty)
+  let nextTier = null
 
-  function buildPm2Data(anchors: typeof ANCHORS) {
-    const pts: Array<{ area: number; Pm2: number }> = []
-    const exactSizePm2 = new Map<string, number>()
-
-    for (const a of anchors) {
-      const A = areaM2(a.w, a.h)
-      const key = `${a.w}×${a.h}`
-      const perSize = SIZE_FACTOR_OVERRIDES[key] || {}
-      const ladderF = tierFactor(a.qty, FACTOR, TIER_MODE)
-      const f = typeof a.factorOverride === "number" ? a.factorOverride : (perSize[a.qty] ?? ladderF)
-
-      const base50 = a.total / (f * (a.qty / 50))
-      const Pm2 = base50 / (A * 50)
-
-      if (isFinite(Pm2) && Pm2 > 0) {
-        pts.push({ area: A, Pm2 })
-        exactSizePm2.set(key, exactSizePm2.has(key) ? (exactSizePm2.get(key)! + Pm2) / 2 : Pm2)
-      }
-    }
-    return { pts, exactSizePm2 }
-  }
-
-  function fitPower(points: Array<{ area: number; Pm2: number }>, clampBounds = PM2_CLAMP) {
-    if (!points.length) return () => 300
-    if (points.length === 1) {
-      const P = points[0].Pm2
-      return () => clamp(P, clampBounds.min, clampBounds.max)
-    }
-
-    const xs = points.map((p) => Math.log(p.area))
-    const ys = points.map((p) => Math.log(p.Pm2))
-    const n = xs.length
-    const sum = (a: number[]) => a.reduce((s, v) => s + v, 0)
-    const xbar = sum(xs) / n,
-      ybar = sum(ys) / n
-
-    let num = 0,
-      den = 0
-    for (let i = 0; i < n; i++) {
-      num += (xs[i] - xbar) * (ys[i] - ybar)
-      den += (xs[i] - xbar) ** 2
-    }
-
-    const b = den === 0 ? 0 : num / den
-    const a = ybar - b * xbar
-
-    return (A: number) => clamp(Math.exp(a + b * Math.log(A)), clampBounds.min, clampBounds.max)
-  }
-
-  const { pts, exactSizePm2 } = buildPm2Data(ANCHORS)
-  const Pm2Fit = fitPower(pts, PM2_CLAMP)
-
-  function price({ widthMM, heightMM, qty }: { widthMM: number; heightMM: number; qty: number }) {
-    const w = clamp(Math.round(widthMM), LIMITS.minW, LIMITS.maxW)
-    const h = clamp(Math.round(heightMM), LIMITS.minH, LIMITS.maxH)
-    const q = clamp(Math.round(qty), LIMITS.minQ, LIMITS.maxQ)
-    const A = areaM2(w, h)
-
-    const key = `${w}×${h}`
-    const Pm2 = exactSizePm2.has(key) ? exactSizePm2.get(key)! : Pm2Fit(A)
-
-    const perSize = SIZE_FACTOR_OVERRIDES[key] || {}
-    const ladderF = tierFactor(q, FACTOR, TIER_MODE)
-    const f = perSize[q] ?? ladderF
-
-    const base50 = Pm2 * A * 50
-    const total = base50 * f * (q / 50)
-
-    const tiers = Object.keys(FACTOR)
-      .map(Number)
-      .sort((a, b) => a - b)
-    const nextTierQty = tiers.find((t) => t > q)
-    let nextTier = null
-
-    if (nextTierQty) {
-      const nextF = perSize[nextTierQty] ?? tierFactor(nextTierQty, FACTOR, TIER_MODE)
-      const savePct = Math.round((1 - f) * 100)
-      const nextSavePct = Math.round((1 - nextF) * 100)
-
-      nextTier = {
-        nextQty: nextTierQty,
-        addMore: nextTierQty - q,
-        nextSavePct,
-      }
-    }
-
-    return {
-      total: Number(total.toFixed(2)),
-      each: Number((total / q).toFixed(2)),
-      base50: Number(base50.toFixed(2)),
-      pricePerM2: Number(Pm2.toFixed(2)),
-      factorUsed: f,
-      savePct: Math.round((1 - f) * 100),
-      nextTier,
+  if (nextTierQty) {
+    const nextSavePct = Math.round(ladderDiscountFor(nextTierQty) * 100)
+    nextTier = {
+      nextQty: nextTierQty,
+      addMore: nextTierQty - qty,
+      nextSavePct,
     }
   }
 
-  return { price }
-})()
+  return {
+    total: Number(total.toFixed(2)),
+    each: Number(unitPrice.toFixed(2)),
+    savePct,
+    nextTier,
+  }
+}
 
 const qtyTiers = [50, 100, 200, 300, 500, 1000, 2000, 3000, 5000, 10000, 20000]
 
@@ -214,11 +125,7 @@ export default function StickerCalculator() {
 
   if (width > 0 && height > 0 && quantity > 0) {
     try {
-      pricingResult = SMule.price({
-        widthMM: width,
-        heightMM: height,
-        qty: quantity,
-      })
+      pricingResult = calculatePrice(width, height, quantity)
 
       total = pricingResult.total
       unitPrice = pricingResult.each
@@ -420,7 +327,7 @@ export default function StickerCalculator() {
                   return qtyTiers
                     .map((qty) => {
                       try {
-                        const result = SMule.price({ widthMM: width, heightMM: height, qty })
+                        const result = calculatePrice(width, height, qty)
                         return (
                           <option key={qty} value={qty}>
                             {qty} stickers • ${result.total}
